@@ -41,6 +41,7 @@ class CloudMailService(BaseEmailService):
                 - admin_email: 管理员邮箱 (必需)
                 - admin_password: 管理员密码 (必需)
                 - domain: 邮箱域名 (可选，用于生成邮箱地址)
+                - subdomain: 子域名 (可选)，会插入到 @ 和域名之间，例如 subdomain="test" 会生成 xxx@test.example.com
                 - timeout: 请求超时时间，默认 30
                 - max_retries: 最大重试次数，默认 3
                 - proxy_url: 代理地址 (可选)
@@ -225,13 +226,14 @@ class CloudMailService(BaseEmailService):
                 raise
             raise EmailServiceError(f"请求失败: {method} {path} - {e}")
 
-    def _generate_email_address(self, prefix: Optional[str] = None, domain: Optional[str] = None) -> str:
+    def _generate_email_address(self, prefix: Optional[str] = None, domain: Optional[str] = None, subdomain: Optional[str] = None) -> str:
         """
         生成邮箱地址
 
         Args:
             prefix: 邮箱前缀，如果不提供则随机生成
             domain: 指定域名，如果不提供则从配置中选择
+            subdomain: 子域名，可选参数，会插入到 @ 和域名之间
 
         Returns:
             完整的邮箱地址
@@ -257,6 +259,10 @@ class CloudMailService(BaseEmailService):
             else:
                 domain = domain_config
 
+        # 如果提供了子域，插入到域名前面
+        if subdomain:
+            domain = f"{subdomain}.{domain}"
+
         return f"{prefix}@{domain}"
 
     def _generate_password(self, length: int = 12) -> str:
@@ -273,6 +279,7 @@ class CloudMailService(BaseEmailService):
                 - name: 邮箱前缀（可选）
                 - password: 邮箱密码（可选，不提供则自动生成）
                 - domain: 邮箱域名（可选，覆盖默认域名）
+                - subdomain: 子域名（可选），会插入到 @ 和域名之间，例如 subdomain="test" 会生成 xxx@test.example.com
 
         Returns:
             包含邮箱信息的字典:
@@ -285,53 +292,31 @@ class CloudMailService(BaseEmailService):
         # 生成邮箱地址
         prefix = req_config.get("name")
         specified_domain = req_config.get("domain")
+        subdomain = req_config.get("subdomain") or self.config.get("subdomain")
         
         if specified_domain:
-            # 使用指定的域名
-            email_address = self._generate_email_address(prefix, specified_domain)
+            email_address = self._generate_email_address(prefix, specified_domain, subdomain)
         else:
-            # 使用配置中的域名
-            email_address = self._generate_email_address(prefix)
+            email_address = self._generate_email_address(prefix, subdomain=subdomain)
 
         # 生成或使用提供的密码
         password = req_config.get("password") or self._generate_password()
 
-        # 调用 API 添加用户
-        url_path = "/api/public/addUser"
-        payload = {
-            "list": [
-                {
-                    "email": email_address,
-                    "password": password
-                }
-            ]
+        # 直接生成邮箱信息（catch-all 域名无需预先创建）
+        email_info = {
+            "email": email_address,
+            "service_id": email_address,
+            "id": email_address,
+            "password": password,
+            "created_at": time.time(),
         }
 
-        try:
-            result = self._make_request("POST", url_path, json=payload)
-
-            if result.get("code") != 200:
-                raise EmailServiceError(f"创建邮箱失败: {result.get('message', 'Unknown error')}")
-
-            email_info = {
-                "email": email_address,
-                "service_id": email_address,
-                "id": email_address,
-                "password": password,
-                "created_at": time.time(),
-            }
-
-            # 缓存邮箱信息
-            self._created_emails[email_address] = email_info
-
-            self.update_status(True)
-            return email_info
-
-        except Exception as e:
-            self.update_status(False, e)
-            if isinstance(e, EmailServiceError):
-                raise
-            raise EmailServiceError(f"创建邮箱失败: {e}")
+        # 缓存邮箱信息
+        self._created_emails[email_address] = email_info
+        self.update_status(True)
+        
+        logger.info(f"生成 CloudMail 邮箱: {email_address}")
+        return email_info
 
     def get_verification_code(
         self,
@@ -538,6 +523,7 @@ class CloudMailService(BaseEmailService):
             "base_url": self.config["base_url"],
             "admin_email": self.config["admin_email"],
             "domain": self.config.get("domain"),
+            "subdomain": self.config.get("subdomain"),
             "cached_emails_count": len(self._created_emails),
             "status": self.status.value,
         }

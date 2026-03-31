@@ -490,6 +490,11 @@ async function handleAddCustom(e) {
             admin_password: formData.get('cm_admin_password'),
             domain: domain
         };
+        // 添加子域配置（如果有）
+        const subdomain = formData.get('cm_subdomain');
+        if (subdomain && subdomain.trim()) {
+            config.subdomain = subdomain.trim();
+        }
     } else {
         serviceType = 'imap_mail';
         config = {
@@ -685,6 +690,8 @@ async function editCustomService(id, subType) {
             const domain = service.config?.domain;
             const domainStr = Array.isArray(domain) ? domain.join(', ') : (domain || '');
             document.getElementById('edit-cm-domain').value = domainStr;
+            // 设置子域
+            document.getElementById('edit-cm-subdomain').value = service.config?.subdomain || '';
         } else {
             document.getElementById('edit-imap-host').value = service.config?.host || '';
             document.getElementById('edit-imap-port').value = service.config?.port || 993;
@@ -750,6 +757,11 @@ async function handleEditCustom(e) {
             admin_email: formData.get('cm_admin_email'),
             domain: domain
         };
+        // 添加子域配置（如果有）
+        const subdomain = formData.get('cm_subdomain');
+        if (subdomain && subdomain.trim()) {
+            config.subdomain = subdomain.trim();
+        }
         const pwd = formData.get('cm_admin_password');
         if (pwd && pwd.trim()) config.admin_password = pwd.trim();
     } else {
