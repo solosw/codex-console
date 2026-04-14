@@ -218,7 +218,7 @@ class RegistrationEngine:
         if not self.oauth_start:
             return None
 
-        max_attempts = 3
+        max_attempts = 10
         for attempt in range(1, max_attempts + 1):
             try:
                 if not self.session:
@@ -628,6 +628,7 @@ class RegistrationEngine:
     def _get_verification_code(self) -> Optional[str]:
         """获取验证码"""
         try:
+            time.sleep(45)
             self._log(f"正在等待邮箱 {self.email} 的验证码...")
 
             email_id = self.email_info.get("service_id") if self.email_info else None
